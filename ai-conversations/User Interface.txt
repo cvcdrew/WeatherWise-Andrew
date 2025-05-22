@@ -695,3 +695,112 @@ if 'N/A' in weather_data['temperature']:
 1. **Missing Data in Weather**: Handle by replacing missing values with `'N/A'` or interpolating where possible.
 2. **Visualization Handling**: Use `pd.to_numeric(..., errors='coerce')` to handle non-numeric or missing values and plot with appropriate warnings.
 3. **User Interface**: Notify users gracefully if data is missing or unavailable, either through message boxes or visual cues.
+
+Questin 5
+--------------------------------------------
+Me:ive updated my code.How easy is it to modify this function to handle new data sources?
+
+AI:Your updated code is moderately easy to modify to support new weather data sources, thanks to its modular structure and separation of concerns.
+
+Here's a breakdown of why it’s adaptable, what changes are needed, and how to make it more flexible going forward.
+
+✅ What Makes It Easy to Modify
+1. Centralized API Call Logic
+Your get_weather_data() function handles all communication with the OpenWeatherMap API:
+
+python
+Copy
+Edit
+def get_weather_data(location: str, forecast_days: int = 5, units: str = "metric") -> dict:
+    ...
+To use a new API, you only need to update this function — not the entire system.
+
+2. Generic Data Handling
+Your plotting functions (create_temperature_plot, create_precipitation_plot) rely on:
+
+Standardized inputs (list of dates and values)
+
+A helper function preprocess_weather_data() to structure that data
+
+As long as your new data source provides similar date/value pairs, your visualizations will still work.
+
+3. Encapsulated NLP Logic
+Your natural language interface (parse_weather_question) doesn’t depend on the data source at all — only on keywords and intent parsing.
+
+This means you can swap the backend API without changing how users ask questions.
+
+🔧 What You’d Need to Modify for a New Data Source
+Here’s what you’d typically change:
+
+Part	What to Modify
+get_weather_data()	Replace or extend API call logic to fetch from a new source
+generate_weather_response()	Adjust the structure used to loop through forecast data if the new format differs
+weather_data["list"] references	If the JSON schema changes, you’ll need to update how your code accesses forecast entries
+
+🔁 Example: Adapting to WeatherAPI.com
+Assume their data format returns:
+
+json
+Copy
+Edit
+{
+  "forecast": {
+    "forecastday": [
+      {
+        "date": "2025-05-22",
+        "hour": [
+          {
+            "time": "2025-05-22 09:00",
+            "temp_c": 15.2,
+            "condition": {"text": "Partly cloudy"},
+            "precip_mm": 0.0
+          },
+          ...
+        ]
+      }
+    ]
+  }
+}
+You would:
+
+Replace the API call in get_weather_data():
+
+python
+Copy
+Edit
+res = requests.get("https://api.weatherapi.com/v1/forecast.json", params={...})
+Adapt the loop in generate_weather_response():
+
+python
+Copy
+Edit
+for day in data["forecast"]["forecastday"]:
+    for hour in day["hour"]:
+        if condition in hour["condition"]["text"].lower() and entry_date == target_date:
+            ...
+Adjust plotting data extraction in create_temperature_plot():
+
+python
+Copy
+Edit
+dates = [hour["time"] for day in data["forecast"]["forecastday"] for hour in day["hour"]]
+temps = [hour["temp_c"] for day in data["forecast"]["forecastday"] for hour in day["hour"]]
+🧰 How to Make It Even Easier to Switch Sources
+Consider introducing a data abstraction layer:
+
+python
+Copy
+Edit
+def fetch_forecast(city, days, units, provider="openweathermap"):
+    if provider == "openweathermap":
+        return get_weather_data_owm(city, days, units)
+    elif provider == "weatherapi":
+        return get_weather_data_weatherapi(city, days, units)
+Then modify your interface logic to select the provider.
+
+✅ Summary
+✅ You’ve designed your code well for extensibility.
+
+🔄 Switching data sources mainly involves modifying get_weather_data() and any hardcoded JSON access paths.
+
+🛠️ For better long-term adaptability, consider abstracting provider logic behind a unified fetch interface.
