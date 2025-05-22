@@ -719,3 +719,109 @@ def get_live_temperature_reading():
 * Store data in a CSV if you want to keep historical logs.
 
 ---
+question 5
+---------------------------------------
+Me:I have updated my code, What potential errors could occur when this function runs? 
+
+AI:Your updated create_temperature_plot function is clean and well-structured, but like any data visualization function, several potential runtime errors or issues could arise depending on the input and environment. Here’s a breakdown of what could go wrong and how to mitigate those issues:
+
+⚠️ Potential Errors & Issues
+1. Missing or Malformed Data in weather_data
+Issue: If weather_data doesn’t have a "list" key or the expected structure inside "list", you’ll get a KeyError or TypeError.
+
+python
+Copy
+Edit
+dates = [entry["dt_txt"] for entry in weather_data["list"]]
+temps = [entry["main"]["temp"] for entry in weather_data["list"]]
+Fix:
+
+python
+Copy
+Edit
+if "list" not in weather_data:
+    raise ValueError("Invalid weather data format: missing 'list'")
+2. Non-uniform or Missing Keys in Entries
+Issue: If some entries in weather_data["list"] are missing "dt_txt" or "main"]["temp", you'll hit KeyError.
+
+Fix: Add validation or filtering:
+
+python
+Copy
+Edit
+dates = []
+temps = []
+for entry in weather_data["list"]:
+    if "dt_txt" in entry and "main" in entry and "temp" in entry["main"]:
+        dates.append(entry["dt_txt"])
+        temps.append(entry["main"]["temp"])
+3. Empty Data After Filtering
+Issue: If dates or temps ends up empty (e.g., due to invalid API data), your plot will fail or look broken.
+
+Fix:
+
+python
+Copy
+Edit
+if not dates or not temps:
+    raise ValueError("No valid data to plot.")
+4. Matplotlib/SNS Misconfiguration
+Issue: Font family or plotting library misconfigurations (e.g., missing font or backend issue) could raise warnings or errors, especially in headless environments.
+
+Fix: Usually safe, but you can guard against font issues by falling back to default:
+
+python
+Copy
+Edit
+try:
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
+except Exception:
+    pass  # fallback silently
+5. Datetime Parsing Issues
+If preprocess_weather_data fails to parse dates, it could raise ValueError.
+
+Mitigation is typically inside preprocess_weather_data, using:
+
+python
+Copy
+Edit
+pd.to_datetime(dates, errors='coerce')
+6. Library Not Imported / Environment Issues
+Make sure matplotlib.pyplot as plt and seaborn as sns are imported.
+
+If using in Jupyter, %matplotlib inline might be needed.
+
+If running in a non-GUI environment (e.g., server), plt.show() can hang or error.
+
+✅ Recommended Defensive Updates
+python
+Copy
+Edit
+def create_temperature_plot(weather_data):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    if "list" not in weather_data or not weather_data["list"]:
+        raise ValueError("Invalid or empty weather data received.")
+
+    dates, temps = [], []
+    for entry in weather_data["list"]:
+        if "dt_txt" in entry and "main" in entry and "temp" in entry["main"]:
+            dates.append(entry["dt_txt"])
+            temps.append(entry["main"]["temp"])
+
+    if not dates or not temps:
+        raise ValueError("No valid forecast data available to plot.")
+
+    df = preprocess_weather_data(dates, temps)
+    
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
+    plt.figure(figsize=(10, 5))
+    sns.lineplot(data=df, x="Date", y="Value", marker="o")
+    plt.title("Temperature Forecast (UTC)")
+    plt.xlabel("Date/Time")
+    plt.ylabel("Temperature (°C)")
+    plt.xticks(rotation=45)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
