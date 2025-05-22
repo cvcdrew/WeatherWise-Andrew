@@ -825,3 +825,93 @@ def create_temperature_plot(weather_data):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+Me:What does this function do, and how does it work?
+
+Ai:The function create_precipitation_plot(weather_data) is designed to visualize precipitation forecasts using a bar chart. It's a data visualization utility that helps users quickly understand the expected rainfall over a given forecast period.
+
+✅ What the Function Does
+It:
+
+Extracts 3-hourly precipitation data (rain["3h"]) from weather forecast data.
+
+Prepares the data in a format suitable for plotting.
+
+Creates a bar plot (using Seaborn & Matplotlib) showing how much precipitation is forecasted at each time interval.
+
+Displays the chart, labeled with date/time and precipitation values in millimeters (mm).
+
+🔧 How the Function Works — Step-by-Step
+1. Set Font (Optional)
+python
+Copy
+Edit
+plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
+Configures the font style for the plot (for visual consistency and clarity).
+
+2. Extract Data
+python
+Copy
+Edit
+dates = [entry["dt_txt"] for entry in weather_data["list"]]
+precip = [entry.get("rain", {}).get("3h", 0) for entry in weather_data["list"]]
+dates: List of forecast timestamps (e.g., "2025-05-22 09:00:00").
+
+precip: Amount of rain forecasted for each 3-hour interval.
+
+If no rain data is present for a time step, it defaults to 0 mm.
+
+3. Prepare Data
+python
+Copy
+Edit
+df = preprocess_weather_data(dates, precip)
+Converts dates and precip into a Pandas DataFrame:
+
+python
+Copy
+Edit
+| Date                | Value |
+|---------------------|--------|
+| 2025-05-22 09:00:00 | 0.4    |
+| 2025-05-22 12:00:00 | 1.2    |
+...
+4. Create Plot
+python
+Copy
+Edit
+plt.figure(figsize=(10, 5))
+sns.barplot(data=df, x="Date", y="Value", color="skyblue")
+Makes a horizontal bar chart where:
+
+X-axis: Date/time (3-hour intervals)
+
+Y-axis: Rainfall amount (in mm)
+
+Color: Light blue ("skyblue")
+
+5. Label and Format
+python
+Copy
+Edit
+plt.title("Precipitation Forecast (UTC)")
+plt.xlabel("Date/Time")
+plt.ylabel("Precipitation (mm)")
+plt.xticks(rotation=45)
+plt.grid(True)
+plt.tight_layout()
+Adds title and axis labels.
+
+Rotates date labels for readability.
+
+Adds grid lines and adjusts layout for spacing.
+
+6. Display the Plot
+python
+Copy
+Edit
+plt.show()
+Displays the chart in a window or notebook cell.
+
+📈 Example Use Case
+Imagine you're building a weather app. You’ve fetched 5-day weather forecast data from the OpenWeatherMap API. This function helps you visualize when it will rain and how much — allowing users to plan around wet weather.
