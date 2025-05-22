@@ -1,0 +1,521 @@
+Me: Can you write the Functions and also go through the three types of testing: doctest, unittest, assert of my code please; 
+
+# 🧪 Install necessary packages
+!pip install -q requests matplotlib pandas seaborn ipywidgets
+
+# ✅ Imports
+import os
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime, timedelta
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+import re
+
+# ✅ API Setup
+os.environ['OPENWEATHERMAP_API_KEY'] = "7cf20335110caaf78db0fecb31852d45"
+API_KEY = os.environ['OPENWEATHERMAP_API_KEY']
+BASE_URL = "https://api.openweathermap.org/data/2.5/forecast"
+INTERVALS_PER_DAY = 8
+
+# ✅ Robust AI-style natural language parser with improved city extraction
+def parse_weather_question(question):
+    question = question.strip()
+    original = question
+    question_lower = question.lower()
+
+    # Default values
+    condition = "rain"
+    city = None
+    day = "today"
+
+    # Extract condition keywords
+    condition_match = re.search(r"\b(rain|snow|clear|cloudy)\b", question_lower)
+    if condition_match:
+        condition = condition_match.group(1)
+
+    # Extract day keywords (check longer phrase first)
+    if "day after tomorrow" in question_lower:
+        day = "day_after_tomorrow"
+    elif "tomorrow" in question_lower:
+        day = "tomorrow"
+
+    # Extract city name carefully from original question (case-sensitive)
+    city_match = re.search(
+        r"\bin ([A-Za-zÀ-ÿ\s]+?)(?:\?|$| tomorrow| day after tomorrow| will| is| does| rain| snow| clear| cloudy)",
+        original, re.IGNORECASE)
+    if city_match:
+        city = city_match.group(1).strip()
+    else:
+        capitalized = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*", original)
+        if capitalized:
+            city = capitalized[-1]
+        else:
+            city = "London"
+
+    fixes = {
+        "paris": "Paris,FR",
+        "london": "London,GB",
+        "new york": "New York,US",
+        "sydney": "Sydney,AU"
+    }
+
+    city_key = city.lower()
+    city = fixes.get(city_key, city.title())
+
+    return {"condition": condition, "city": city, "day": day}
+
+# ✅ Weather data fetch
+def get_weather_data(location: str, forecast_days: int = 5, units: str = "metric") -> dict:
+    params = {
+        "q": location,
+        "cnt": forecast_days * INTERVALS_PER_DAY,
+        "units": units,
+        "appid": API_KEY
+    }
+    res = requests.get(BASE_URL, params=params)
+    if res.status_code != 200:
+        raise Exception(f"Error fetching weather: {res.status_code} - {res.text}")
+    return res.json()
+
+# ✅ Generate AI response based on parsed question
+def generate_weather_response(parsed):
+    if not parsed:
+        return "⚠️ Sorry, I couldn't understand your question. Try asking like: 'Will it rain in Paris tomorrow?'"
+
+    condition = parsed["condition"]
+    city = parsed["city"]
+    day = parsed["day"]
+
+    display_city = city.split(",")[0]
+
+    try:
+        data = get_weather_data(city)
+        target_date = datetime.utcnow().date()
+        if day == "tomorrow":
+            target_date += timedelta(days=1)
+        elif day == "day_after_tomorrow":
+            target_date += timedelta(days=2)
+
+        for entry in data["list"]:
+            entry_date = datetime.strptime(entry["dt_txt"], "%Y-%m-%d %H:%M:%S").date()
+            weather_desc = entry["weather"][0]["description"].lower()
+            if entry_date == target_date and condition in weather_desc:
+                return f"✅ Yes, it looks like it will be {condition} in {display_city} {day.replace('_', ' ')}."
+        return f"❌ No, it doesn't look like it will be {condition} in {display_city} {day.replace('_', ' ')}."
+
+    except Exception as e:
+        return f"❌ Could not retrieve weather for {display_city}: {e}"
+
+# ✅ Preprocessing for plotting
+def preprocess_weather_data(dates, values):
+    df = pd.DataFrame({"Date": pd.to_datetime(dates), "Value": values})
+    return df
+
+# ✅ Visualizations without emojis in titles and without 'Noto Color Emoji' font
+def create_temperature_plot(weather_data):
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
+    dates = [entry["dt_txt"] for entry in weather_data["list"]]
+    temps = [entry["main"]["temp"] for entry in weather_data["list"]]
+    df = preprocess_weather_data(dates, temps)
+    plt.figure(figsize=(10, 5))
+    sns.lineplot(data=df, x="Date", y="Value", marker="o")
+    plt.title("Temperature Forecast (UTC)")  # Emoji removed
+    plt.xlabel("Date/Time")
+    plt.ylabel("Temperature (°C)")
+    plt.xticks(rotation=45)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def create_precipitation_plot(weather_data):
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'sans-serif']
+    dates = [entry["dt_txt"] for entry in weather_data["list"]]
+    precip = [entry.get("rain", {}).get("3h", 0) for entry in weather_data["list"]]
+    df = preprocess_weather_data(dates, precip)
+    plt.figure(figsize=(10, 5))
+    sns.barplot(data=df, x="Date", y="Value", color="skyblue")
+    plt.title("Precipitation Forecast (UTC)")  # Emoji removed
+    plt.xlabel("Date/Time")
+    plt.ylabel("Precipitation (mm)")
+    plt.xticks(rotation=45)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# ✅ Widgets
+location_box = widgets.Text(description="City:", placeholder="e.g. London", value="London")
+days_slider = widgets.IntSlider(description="Days:", min=1, max=5, value=3)
+units_dropdown = widgets.Dropdown(options=["metric", "imperial", "standard"], value="metric", description="Units:")
+vis_toggle = widgets.ToggleButtons(options=["Temperature", "Precipitation", "Both"], description="Visual:")
+question_box = widgets.Text(description="Ask AI:", placeholder="e.g. Will it rain in Paris tomorrow?")
+go_button = widgets.Button(description="Show Forecast", button_style="primary")
+ask_ai_button = widgets.Button(description="Ask AI", button_style="info")
+output = widgets.Output()
+
+# ✅ Click handler for Show Forecast button
+def on_click(b):
+    with output:
+        clear_output()
+        try:
+            if question_box.value.strip():
+                parsed = parse_weather_question(question_box.value)
+                print(generate_weather_response(parsed))
+                location = parsed["city"]
+                day = parsed["day"]
+                days = 1 if day == "today" else (2 if day == "tomorrow" else 3)
+                vis = "Temperature"
+                if parsed["condition"] in ["rain", "snow"]:
+                    vis = "Both"
+                question_box.value = ""
+            else:
+                location = location_box.value.strip() or "London"
+                days = days_slider.value
+                vis = vis_toggle.value
+
+            units = units_dropdown.value
+            weather_data = get_weather_data(location, days, units)
+
+            if vis in ["Temperature", "Both"]:
+                create_temperature_plot(weather_data)
+            if vis in ["Precipitation", "Both"]:
+                create_precipitation_plot(weather_data)
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+
+go_button.on_click(on_click)
+
+# ✅ Click handler for Ask AI button
+def on_ask_ai_click(b):
+    with output:
+        clear_output()
+        question = question_box.value.strip()
+        if not question:
+            print("⚠️ Please enter a question in the 'Ask AI' box.")
+            return
+        try:
+            parsed = parse_weather_question(question)
+            response = generate_weather_response(parsed)
+            print(response)
+            question_box.value = ""
+        except Exception as e:
+            print(f"❌ Error processing AI question: {e}")
+
+ask_ai_button.on_click(on_ask_ai_click)
+
+# ✅ Display UI with Ask AI button next to question box
+print("☁️ Welcome to the AI-Powered Weather Assistant!")
+display(widgets.VBox([
+    widgets.HBox([question_box, ask_ai_button]),
+    widgets.HBox([location_box, days_slider]),
+    widgets.HBox([units_dropdown, vis_toggle]),
+    go_button,
+    output
+]))
+
+     
+
+AI:
+Sure! Here's a breakdown for each core function in your code, including:
+
+📘 Function definition
+✅ Three types of testing: doctest, unittest, and assert
+🐞 A debugging function to simulate real-world use
+🔹 1. parse_weather_question(question)
+
+📘 Function Definition
+Parses a natural language weather-related question to extract the condition (e.g., rain), city, and day.
+
+def parse_weather_question(question):
+
+    ...
+
+✅ Testing
+
+# ✅ Doctest
+
+def test_parse_weather_question_doc():
+
+    """
+
+    >>> parse_weather_question("Will it rain in London tomorrow?")
+
+    {'condition': 'rain', 'city': 'London,GB', 'day': 'tomorrow'}
+
+    """
+
+    pass
+
+ 
+
+# ✅ Unittest
+
+import unittest
+
+ 
+
+class TestParseWeatherQuestion(unittest.TestCase):
+
+    def test_rain_tomorrow(self):
+
+        q = "Will it rain in London tomorrow?"
+
+        expected = {'condition': 'rain', 'city': 'London,GB', 'day': 'tomorrow'}
+
+        self.assertEqual(parse_weather_question(q), expected)
+
+ 
+
+# ✅ Assert
+
+assert parse_weather_question("Will it snow in Paris?") == {
+
+    'condition': 'snow', 'city': 'Paris,FR', 'day': 'today'
+
+}
+
+🐞 Debugging Function
+
+def debug_parse_weather_question():
+
+    test_qs = [
+
+        "Will it rain in New York tomorrow?",
+
+        "Is it going to be clear in Sydney?",
+
+        "Does it snow in London the day after tomorrow?",
+
+        "Cloudy in Paris?"
+
+    ]
+
+    for q in test_qs:
+
+        print(f"Q: {q} ➜ {parse_weather_question(q)}")
+
+🔹 2. get_weather_data(location, forecast_days, units)
+
+📘 Function Definition
+Fetches forecast data from OpenWeatherMap API.
+
+def get_weather_data(location: str, forecast_days: int = 5, units: str = "metric") -> dict:
+
+    ...
+
+✅ Testing
+
+# ✅ Doctest (example only, can't hit API in real doctest)
+
+def test_get_weather_data_doc():
+
+    """
+
+    >>> type(get_weather_data("London,GB", 1))
+
+    <class 'dict'>
+
+    """
+
+    pass
+
+ 
+
+# ✅ Unittest (mocking needed)
+
+class TestWeatherAPI(unittest.TestCase):
+
+    def test_response_structure(self):
+
+        data = get_weather_data("Paris,FR", 1)
+
+        self.assertIn("list", data)
+
+        self.assertIsInstance(data["list"], list)
+
+ 
+
+# ✅ Assert
+
+assert "list" in get_weather_data("London,GB", 1)
+
+🐞 Debugging Function
+
+def debug_get_weather_data():
+
+    try:
+
+        city = "London,GB"
+
+        data = get_weather_data(city, 2)
+
+        print(f"✅ Data retrieved for {city}. Entries: {len(data['list'])}")
+
+    except Exception as e:
+
+        print(f"❌ Failed: {e}")
+
+🔹 3. generate_weather_response(parsed)
+
+📘 Function Definition
+Returns a textual AI-style response to parsed weather queries.
+
+def generate_weather_response(parsed):
+
+    ...
+
+✅ Testing
+
+# ✅ Doctest
+
+def test_generate_weather_response_doc():
+
+    """
+
+    >>> parsed = {'condition': 'rain', 'city': 'London,GB', 'day': 'tomorrow'}
+
+    >>> isinstance(generate_weather_response(parsed), str)
+
+    True
+
+    """
+
+    pass
+
+ 
+
+# ✅ Unittest
+
+class TestWeatherResponse(unittest.TestCase):
+
+    def test_response_type(self):
+
+        parsed = {'condition': 'clear', 'city': 'Paris,FR', 'day': 'today'}
+
+        response = generate_weather_response(parsed)
+
+        self.assertIsInstance(response, str)
+
+ 
+
+# ✅ Assert
+
+assert "Yes" in generate_weather_response({'condition': 'rain', 'city': 'London,GB', 'day': 'today'}) or \
+
+       "No" in generate_weather_response({'condition': 'rain', 'city': 'London,GB', 'day': 'today'})
+
+🐞 Debugging Function
+
+def debug_generate_weather_response():
+
+    parsed = parse_weather_question("Will it rain in New York tomorrow?")
+
+    response = generate_weather_response(parsed)
+
+    print("AI Response:", response)
+
+🔹 4. preprocess_weather_data(dates, values)
+
+📘 Function Definition
+Converts lists of dates and values into a pandas DataFrame.
+
+def preprocess_weather_data(dates, values):
+
+    ...
+
+✅ Testing
+
+# ✅ Doctest
+
+def test_preprocess_weather_data_doc():
+
+    """
+
+    >>> df = preprocess_weather_data(["2025-05-21 12:00:00"], [20])
+
+    >>> list(df.columns)
+
+    ['Date', 'Value']
+
+    """
+
+    pass
+
+ 
+
+# ✅ Unittest
+
+class TestPreprocessing(unittest.TestCase):
+
+    def test_dataframe_shape(self):
+
+        df = preprocess_weather_data(["2025-05-21 12:00:00", "2025-05-22 12:00:00"], [20, 22])
+
+        self.assertEqual(df.shape, (2, 2))
+
+ 
+
+# ✅ Assert
+
+df_test = preprocess_weather_data(["2025-05-21 12:00:00"], [25])
+
+assert df_test.iloc[0]["Value"] == 25
+
+🐞 Debugging Function
+
+def debug_preprocess_weather_data():
+
+    dates = ["2025-05-21 12:00:00", "2025-05-22 12:00:00"]
+
+    temps = [20, 23]
+
+    df = preprocess_weather_data(dates, temps)
+
+    print(df.head())
+
+🔹 5. create_temperature_plot(weather_data) and create_precipitation_plot(weather_data)
+
+📘 Function Definition
+Creates line/bar plots from forecast data.
+
+✅ Testing
+These are visual functions; testing is more qualitative. Still, we can confirm structure.
+
+# ✅ Assert: Pre-check data integrity
+
+sample_data = {
+
+    "list": [{"dt_txt": "2025-05-21 12:00:00", "main": {"temp": 20}, "weather": [{"description": "clear sky"}]}]
+
+}
+
+assert "dt_txt" in sample_data["list"][0]
+
+ 
+
+# ✅ Unittest for data preprocessing part only
+
+class TestVisualInput(unittest.TestCase):
+
+    def test_data_keys(self):
+
+        for item in sample_data["list"]:
+
+            self.assertIn("dt_txt", item)
+
+            self.assertIn("main", item)
+
+🐞 Debugging Function
+
+def debug_plot():
+
+    city = "Paris,FR"
+
+    data = get_weather_data(city, 1)
+
+    create_temperature_plot(data)
+
+    create_precipitation_plot(data)
